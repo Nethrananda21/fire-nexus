@@ -1,0 +1,7 @@
+﻿# Python
+__pycache__/
+*.pyc
+
+# Env and secrets
+.env
+.env.*
