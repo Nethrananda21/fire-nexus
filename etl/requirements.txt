@@ -1,0 +1,15 @@
+# Core dependencies
+requests>=2.31.0
+pandas>=2.0.0
+geopandas>=0.14.0
+shapely>=2.0.0
+
+# Database
+sqlalchemy>=2.0.0
+geoalchemy2>=0.14.0
+psycopg2-binary>=2.9.0
+
+# Optional: For enhanced functionality
+python-dotenv>=1.0.0  # For .env file support
+pyarrow>=14.0.0  # For faster parquet operations
+tenacity>=8.2.0  # For retry logic
