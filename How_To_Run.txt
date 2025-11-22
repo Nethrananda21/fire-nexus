@@ -1,0 +1,31 @@
+🚀 Quick Start Guide
+To Run the Project (2 Commands):
+1. Start Backend:
+    python -m uvicorn main:app --host 0.0.0.0 --port 8000
+
+2. Open Frontend:
+    Start-Process (Resolve-Path "frontend\index.html").Path
+
+That's it! The system will:
+✅ Fetch 42,000+ fires from NASA
+✅ Display them on an interactive map
+✅ Auto-update every 10 minutes
+✅ Cluster moderate fires (no lag!)
+✅ Show severe fires individually (red dots)
+
+Key Files:
+📄 RUN_PROJECT.md - Complete guide (just created)
+📄 README.md - Project overview
+📄 SETUP.md - Installation instructions
+📄 copilot-instructions.md - Development guide
+
+
+The RUN_PROJECT.md includes:
+
+Step-by-step startup instructions
+Troubleshooting common issues
+API endpoint testing commands
+Performance tips
+Daily usage workflow
+How to stop the system
+Your system is fully operational and optimized! 🎉
