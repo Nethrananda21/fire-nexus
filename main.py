@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, func
+from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, func, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 from geoalchemy2 import Geometry
@@ -274,7 +274,7 @@ class FireDataETL:
         """Run SQL queries to analyze fire severity distribution"""
         try:
             # Update severity based on spatial clustering and FRP
-            query = f"""
+            query = text(f"""
             UPDATE fire_detections
             SET severity = CASE
                 WHEN frp > {SEVERE_FRP_THRESHOLD} OR (frp > {SEVERE_FRP_WITH_CONFIDENCE} AND confidence = 'h') THEN 'severe'
@@ -282,7 +282,7 @@ class FireDataETL:
                 ELSE 'moderate'
             END
             WHERE detected_at > NOW() - INTERVAL '24 hours';
-            """
+            """)
             self.db.execute(query)
             self.db.commit()
             
