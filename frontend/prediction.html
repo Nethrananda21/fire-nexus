@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FireNexus | AI Fire Prediction</title>
+    
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+    
+    <!-- Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
+
+    <!-- Custom Styles -->
+    <link rel="stylesheet" href="css/styles.css">
+    <link rel="stylesheet" href="css/prediction.css">
+</head>
+<body>
+
+    <!-- Navigation Bar -->
+    <nav class="navbar">
+        <div class="nav-brand">
+            <i class="ri-fire-fill"></i>
+            <span>FireNexus</span>
+        </div>
+        <div class="nav-links">
+            <a href="index.html" class="nav-link">
+                <i class="ri-map-2-line"></i>
+                Live Map
+            </a>
+            <a href="prediction.html" class="nav-link active">
+                <i class="ri-brain-line"></i>
+                AI Predictions
+            </a>
+        </div>
+    </nav>
+
+    <!-- Map Container -->
+    <div id="predictionMap"></div>
+
+    <!-- Prediction Sidebar -->
+    <div class="prediction-sidebar">
+        <div class="header">
+            <div class="brand">
+                <i class="ri-brain-line"></i>
+                <h1>AI Fire Prediction</h1>
+            </div>
+            <div class="subtitle">Machine Learning Fire Continuation Analysis</div>
+        </div>
+
+        <div class="prediction-stats-grid">
+            <div class="pred-stat-card high">
+                <div class="pred-stat-icon"><i class="ri-fire-fill"></i></div>
+                <div class="pred-stat-content">
+                    <div class="pred-stat-label">High Risk</div>
+                    <div class="pred-stat-value" id="highRiskCount">-</div>
+                    <div class="pred-stat-sub">>70% probability</div>
+                </div>
+            </div>
+            <div class="pred-stat-card medium">
+                <div class="pred-stat-icon"><i class="ri-alert-line"></i></div>
+                <div class="pred-stat-content">
+                    <div class="pred-stat-label">Medium Risk</div>
+                    <div class="pred-stat-value" id="mediumRiskCount">-</div>
+                    <div class="pred-stat-sub">40-70% probability</div>
+                </div>
+            </div>
+            <div class="pred-stat-card low">
+                <div class="pred-stat-icon"><i class="ri-shield-check-line"></i></div>
+                <div class="pred-stat-content">
+                    <div class="pred-stat-label">Low Risk</div>
+                    <div class="pred-stat-value" id="lowRiskCount">-</div>
+                    <div class="pred-stat-sub"><40% probability</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="controls">
+            <div class="control-group">
+                <label>RISK FILTER</label>
+                <div class="select-wrapper">
+                    <select id="riskFilter">
+                        <option value="all">Show All Predictions</option>
+                        <option value="HIGH">High Risk Only</option>
+                        <option value="MEDIUM">Medium Risk Only</option>
+                        <option value="LOW">Low Risk Only</option>
+                    </select>
+                    <i class="ri-arrow-down-s-line"></i>
+                </div>
+            </div>
+            
+            <button class="btn btn-primary" onclick="loadPredictions()">
+                <i class="ri-refresh-line"></i>
+                Load Predictions
+            </button>
+        </div>
+
+        <div class="prediction-info">
+            <div class="info-card">
+                <div class="info-header">
+                    <i class="ri-information-line"></i>
+                    <span>About AI Predictions</span>
+                </div>
+                <div class="info-content">
+                    <p>Our Random Forest model predicts fire continuation probability in the next 24 hours based on:</p>
+                    <ul>
+                        <li>Fire Radiative Power (FRP)</li>
+                        <li>Temporal patterns (time, day, season)</li>
+                        <li>Geographic location</li>
+                        <li>Environmental conditions</li>
+                        <li>Historical fire activity</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="info-card">
+                <div class="info-header">
+                    <i class="ri-bar-chart-line"></i>
+                    <span>Model Performance</span>
+                </div>
+                <div class="info-content">
+                    <div class="metric-row">
+                        <span>Accuracy:</span>
+                        <strong>99.63%</strong>
+                    </div>
+                    <div class="metric-row">
+                        <span>Precision:</span>
+                        <strong>99.84%</strong>
+                    </div>
+                    <div class="metric-row">
+                        <span>Recall:</span>
+                        <strong>99.78%</strong>
+                    </div>
+                    <div class="metric-row">
+                        <span>ROC-AUC:</span>
+                        <strong>99.93%</strong>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="legend">
+            <div class="legend-title">Risk Levels</div>
+            <div class="legend-item">
+                <div class="dot risk-high"></div>
+                <span>High Risk (>70%)</span>
+            </div>
+            <div class="legend-item">
+                <div class="dot risk-medium"></div>
+                <span>Medium Risk (40-70%)</span>
+            </div>
+            <div class="legend-item">
+                <div class="dot risk-low"></div>
+                <span>Low Risk (<40%)</span>
+            </div>
+        </div>
+
+        <div class="footer">
+            <div class="status-indicator">
+                <div class="status-dot"></div>
+                <span>ML Model Active</span>
+            </div>
+            <div id="predictionUpdate">Loading predictions...</div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+
+    <!-- Custom JavaScript -->
+    <script src="js/prediction.js"></script>
+</body>
+</html>

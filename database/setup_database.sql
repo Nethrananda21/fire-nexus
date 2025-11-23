@@ -29,7 +29,8 @@ CREATE TABLE IF NOT EXISTS fire_detections (
     daynight VARCHAR(5),
     severity VARCHAR(20),
     detected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Create spatial index on geometry column
@@ -40,6 +41,9 @@ CREATE INDEX idx_fire_severity ON fire_detections(severity);
 
 -- Create index on detected_at for time-based queries
 CREATE INDEX idx_fire_detected_at ON fire_detections(detected_at);
+
+-- Create index on last_seen for active fire queries
+CREATE INDEX idx_fire_last_seen ON fire_detections(last_seen);
 
 -- Create composite index for common queries
 CREATE INDEX idx_fire_severity_date ON fire_detections(severity, detected_at);
@@ -77,11 +81,12 @@ SELECT
     acq_date,
     acq_time,
     satellite,
-    detected_at
+    detected_at,
+    last_seen
 FROM fire_detections
 WHERE severity = 'severe' 
-    AND detected_at > NOW() - INTERVAL '24 hours'
-ORDER BY detected_at DESC;
+    AND last_seen > NOW() - INTERVAL '30 minutes'
+ORDER BY last_seen DESC;
 
 -- Create view for moderate fires
 CREATE OR REPLACE VIEW moderate_fires AS
@@ -95,11 +100,12 @@ SELECT
     acq_date,
     acq_time,
     satellite,
-    detected_at
+    detected_at,
+    last_seen
 FROM fire_detections
 WHERE severity = 'moderate' 
-    AND detected_at > NOW() - INTERVAL '24 hours'
-ORDER BY detected_at DESC;
+    AND last_seen > NOW() - INTERVAL '30 minutes'
+ORDER BY last_seen DESC;
 
 -- Create view for fire statistics
 CREATE OR REPLACE VIEW fire_statistics AS
@@ -109,9 +115,9 @@ SELECT
     COUNT(*) FILTER (WHERE severity = 'moderate') as moderate_fires,
     AVG(frp) as avg_frp,
     MAX(frp) as max_frp,
-    MAX(detected_at) as last_detection
+    MAX(last_seen) as last_detection
 FROM fire_detections
-WHERE detected_at > NOW() - INTERVAL '24 hours';
+WHERE last_seen > NOW() - INTERVAL '30 minutes';
 
 -- Create materialized view for spatial clustering analysis
 CREATE MATERIALIZED VIEW fire_clusters AS
@@ -125,7 +131,7 @@ WITH clustered_fires AS (
         frp,
         ST_ClusterDBSCAN(geom, eps := 0.1, minpoints := 3) OVER() as cluster_id
     FROM fire_detections
-    WHERE detected_at > NOW() - INTERVAL '24 hours'
+    WHERE last_seen > NOW() - INTERVAL '30 minutes'
 )
 SELECT 
     cluster_id,
@@ -198,7 +204,7 @@ BEGIN
             ST_SetSRID(ST_MakePoint(p_longitude, p_latitude), 4326)::geography
         ) / 1000 as distance_km
     FROM fire_detections f
-    WHERE f.detected_at > NOW() - INTERVAL '24 hours'
+    WHERE f.last_seen > NOW() - INTERVAL '30 minutes'
         AND ST_DWithin(
             f.geom::geography,
             ST_SetSRID(ST_MakePoint(p_longitude, p_latitude), 4326)::geography,
@@ -224,4 +230,5 @@ COMMENT ON TABLE fire_detections IS 'Active fire detections from NASA FIRMS VIIR
 COMMENT ON COLUMN fire_detections.frp IS 'Fire Radiative Power in MW (megawatts)';
 COMMENT ON COLUMN fire_detections.severity IS 'Fire severity classification: severe or moderate';
 COMMENT ON COLUMN fire_detections.geom IS 'PostGIS geometry point (SRID 4326)';
-COMMENT ON VIEW fire_statistics IS 'Real-time statistics of active fires in the last 24 hours';
+COMMENT ON COLUMN fire_detections.last_seen IS 'Last time this fire was detected in NASA FIRMS data fetch';
+COMMENT ON VIEW fire_statistics IS 'Real-time statistics of active fires seen in the last 30 minutes';

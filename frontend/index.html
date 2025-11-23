@@ -1,599 +1,125 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Wildfire Detection System</title>
-
+    <title>FireNexus | Global Wildfire Intelligence</title>
+    
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
     <!-- Leaflet CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <!-- Leaflet MarkerCluster CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+    
+    <!-- Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
 
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: #0a0e27;
-            color: #fff;
-        }
-
-        .header {
-            background: linear-gradient(135deg, #1a1f3a 0%, #2d1b2e 100%);
-            padding: 20px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
-        }
-
-        .header h1 {
-            font-size: 28px;
-            margin-bottom: 10px;
-            background: linear-gradient(90deg, #ff6b6b, #ffa500);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }
-
-        .header p {
-            color: #9ca3af;
-            font-size: 14px;
-        }
-
-        .dashboard {
-            display: flex;
-            gap: 20px;
-            padding: 20px;
-            max-width: 1800px;
-            margin: 0 auto;
-        }
-
-        .sidebar {
-            width: 300px;
-            background: #1a1f3a;
-            border-radius: 12px;
-            padding: 20px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
-        }
-
-        .stats-container {
-            margin-bottom: 30px;
-        }
-
-        .stat-card {
-            background: linear-gradient(135deg, #2d1b2e 0%, #1a1f3a 100%);
-            border-radius: 8px;
-            padding: 15px;
-            margin-bottom: 15px;
-            border-left: 4px solid;
-        }
-
-        .stat-card.total {
-            border-color: #3b82f6;
-        }
-
-        .stat-card.severe {
-            border-color: #ef4444;
-        }
-
-        .stat-card.moderate {
-            border-color: #f97316;
-        }
-
-        .stat-label {
-            font-size: 12px;
-            color: #9ca3af;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-        }
-
-        .stat-value {
-            font-size: 32px;
-            font-weight: bold;
-            margin-top: 5px;
-        }
-
-        .legend {
-            background: #2d1b2e;
-            border-radius: 8px;
-            padding: 15px;
-            margin-bottom: 20px;
-        }
-
-        .legend h3 {
-            font-size: 14px;
-            margin-bottom: 12px;
-            color: #9ca3af;
-            text-transform: uppercase;
-        }
-
-        .legend-item {
-            display: flex;
-            align-items: center;
-            margin-bottom: 10px;
-            font-size: 14px;
-        }
-
-        .legend-color {
-            width: 20px;
-            height: 20px;
-            border-radius: 50%;
-            margin-right: 10px;
-            box-shadow: 0 0 10px rgba(255, 107, 107, 0.5);
-        }
-
-        .legend-color.severe {
-            background: #ef4444;
-            box-shadow: 0 0 15px rgba(239, 68, 68, 0.6);
-        }
-
-        .legend-color.moderate {
-            background: #f97316;
-            box-shadow: 0 0 15px rgba(249, 115, 22, 0.6);
-        }
-
-        .controls {
-            margin-top: 20px;
-        }
-
-        .control-group {
-            margin-bottom: 15px;
-        }
-
-        .control-group label {
-            display: block;
-            font-size: 12px;
-            color: #9ca3af;
-            margin-bottom: 5px;
-            text-transform: uppercase;
-        }
-
-        .control-group select,
-        .control-group button {
-            width: 100%;
-            padding: 10px;
-            border-radius: 6px;
-            border: 1px solid #374151;
-            background: #2d1b2e;
-            color: #fff;
-            font-size: 14px;
-            cursor: pointer;
-            transition: all 0.3s;
-        }
-
-        .control-group select:hover,
-        .control-group button:hover {
-            border-color: #f97316;
-        }
-
-        .control-group button {
-            background: linear-gradient(135deg, #f97316 0%, #ef4444 100%);
-            border: none;
-            font-weight: bold;
-        }
-
-        .control-group button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(249, 115, 22, 0.4);
-        }
-
-        .map-container {
-            flex: 1;
-            border-radius: 12px;
-            overflow: hidden;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
-            position: relative;
-        }
-
-        #map {
-            height: calc(100vh - 140px);
-            width: 100%;
-        }
-
-        .update-indicator {
-            position: absolute;
-            top: 10px;
-            right: 10px;
-            background: rgba(26, 31, 58, 0.95);
-            padding: 10px 15px;
-            border-radius: 8px;
-            font-size: 12px;
-            z-index: 1000;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .update-indicator.updating {
-            border-left: 3px solid #f97316;
-        }
-
-        .pulse {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background: #10b981;
-            animation: pulse 2s infinite;
-        }
-
-        @keyframes pulse {
-
-            0%,
-            100% {
-                opacity: 1;
-                transform: scale(1);
-            }
-
-            50% {
-                opacity: 0.5;
-                transform: scale(1.2);
-            }
-        }
-
-        .last-update {
-            color: #9ca3af;
-            font-size: 11px;
-            margin-top: 15px;
-            text-align: center;
-        }
-
-        /* Custom marker styles */
-        .fire-marker {
-            border-radius: 50%;
-            border: 2px solid rgba(255, 255, 255, 0.3);
-            animation: fireGlow 2s infinite;
-        }
-
-        .fire-marker.severe {
-            background: radial-gradient(circle, #ef4444 0%, #991b1b 100%);
-            box-shadow: 0 0 20px rgba(239, 68, 68, 0.8);
-        }
-
-        .fire-marker.moderate {
-            background: radial-gradient(circle, #f97316 0%, #c2410c 100%);
-            box-shadow: 0 0 15px rgba(249, 115, 22, 0.6);
-        }
-
-        @keyframes fireGlow {
-
-            0%,
-            100% {
-                box-shadow: 0 0 15px rgba(239, 68, 68, 0.6);
-            }
-
-            50% {
-                box-shadow: 0 0 25px rgba(239, 68, 68, 0.9);
-            }
-        }
-
-        /* Popup styles */
-        .leaflet-popup-content-wrapper {
-            background: #1a1f3a;
-            color: #fff;
-            border-radius: 8px;
-        }
-
-        .leaflet-popup-content {
-            margin: 15px;
-        }
-
-        .leaflet-popup-tip {
-            background: #1a1f3a;
-        }
-
-        .popup-title {
-            font-size: 16px;
-            font-weight: bold;
-            margin-bottom: 10px;
-            color: #f97316;
-        }
-
-        .popup-info {
-            font-size: 13px;
-            line-height: 1.6;
-        }
-
-        .popup-info strong {
-            color: #9ca3af;
-        }
-
-        /* Cluster styles */
-        .marker-cluster-moderate {
-            background-color: rgba(249, 115, 22, 0.6);
-            border: 2px solid rgba(249, 115, 22, 0.9);
-        }
-
-        .marker-cluster-moderate div {
-            background-color: rgba(249, 115, 22, 0.8);
-            color: white;
-            font-weight: bold;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            width: 100%;
-            height: 100%;
-            border-radius: 50%;
-        }
-
-        .marker-cluster-small {
-            width: 30px !important;
-            height: 30px !important;
-        }
-
-        .marker-cluster-medium {
-            width: 40px !important;
-            height: 40px !important;
-        }
-
-        .marker-cluster-large {
-            width: 50px !important;
-            height: 50px !important;
-        }
-
-        @media (max-width: 1024px) {
-            .dashboard {
-                flex-direction: column;
-            }
-
-            .sidebar {
-                width: 100%;
-            }
-        }
-    </style>
+    <!-- Custom Styles -->
+    <link rel="stylesheet" href="css/styles.css">
 </head>
-
 <body>
-    <div class="header">
-        <h1>🔥 Wildfire Detection System</h1>
-        <p>Real-time fire monitoring powered by NASA FIRMS satellite data</p>
+
+    <!-- Navigation Bar -->
+    <nav class="navbar">
+        <div class="nav-brand">
+            <i class="ri-fire-fill"></i>
+            <span>FireNexus</span>
+        </div>
+        <div class="nav-links">
+            <a href="index.html" class="nav-link active">
+                <i class="ri-map-2-line"></i>
+                Live Map
+            </a>
+            <a href="prediction.html" class="nav-link">
+                <i class="ri-brain-line"></i>
+                AI Predictions
+            </a>
+        </div>
+    </nav>
+
+    <!-- Loading Screen -->
+    <div id="loader">
+        <div class="spinner"></div>
+        <div style="font-weight: 500; letter-spacing: 1px;">INITIALIZING FIRENEXUS...</div>
     </div>
 
-    <div class="dashboard">
-        <div class="sidebar">
-            <div class="stats-container">
-                <h2 style="font-size: 16px; margin-bottom: 15px; color: #9ca3af;">LIVE STATISTICS</h2>
+    <!-- Map Container -->
+    <div id="map" style="top: 60px;"></div>
 
-                <div class="stat-card total">
-                    <div class="stat-label">Total Active Fires</div>
-                    <div class="stat-value" id="totalFires">0</div>
-                </div>
-
-                <div class="stat-card severe">
-                    <div class="stat-label">Severe Fires</div>
-                    <div class="stat-value" id="severeFires">0</div>
-                </div>
-
-                <div class="stat-card moderate">
-                    <div class="stat-label">Moderate Fires</div>
-                    <div class="stat-value" id="moderateFires">0</div>
-                </div>
+    <!-- Floating Sidebar -->
+    <div class="sidebar" style="top: 80px;">
+        <div class="header">
+            <div class="brand">
+                <i class="ri-fire-fill"></i>
+                <h1>FireNexus</h1>
             </div>
+            <div class="subtitle">Global Real-Time Wildfire Intelligence</div>
+        </div>
 
-            <div class="legend">
-                <h3>Legend</h3>
-                <div class="legend-item">
-                    <div class="legend-color severe"></div>
-                    <span>Severe (High FRP > 100 MW)</span>
-                </div>
-                <div class="legend-item">
-                    <div class="legend-color moderate"></div>
-                    <span>Moderate (FRP 20-100 MW)</span>
-                </div>
+        <div class="stats-grid">
+            <div class="stat-card full">
+                <div class="stat-label">Total Active Fires</div>
+                <div class="stat-value" id="totalFires">-</div>
             </div>
+            <div class="stat-card">
+                <div class="stat-label">Severe</div>
+                <div class="stat-value danger" id="severeFires">-</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Moderate</div>
+                <div class="stat-value warning" id="moderateFires">-</div>
+            </div>
+        </div>
 
-            <div class="controls">
-                <div class="control-group">
-                    <label>Filter by Severity</label>
+        <div class="controls">
+            <div class="control-group">
+                <label>SEVERITY FILTER</label>
+                <div class="select-wrapper">
                     <select id="severityFilter">
-                        <option value="all">All Fires</option>
-                        <option value="severe">Severe Only</option>
+                        <option value="all">Show All Fires</option>
+                        <option value="severe">Severe Only (>100MW)</option>
                         <option value="moderate">Moderate Only</option>
                     </select>
-                </div>
-
-                <div class="control-group">
-                    <button onclick="refreshData()">Refresh Now</button>
+                    <i class="ri-arrow-down-s-line"></i>
                 </div>
             </div>
+            
+            <button class="btn btn-primary" onclick="refreshData()">
+                <i class="ri-refresh-line"></i>
+                Refresh Data
+            </button>
+        </div>
 
-            <div class="last-update">
-                Last updated: <span id="lastUpdate">Never</span>
+        <div class="legend">
+            <div class="legend-title">Map Legend</div>
+            <div class="legend-item">
+                <div class="dot severe"></div>
+                <span>Severe Fire (High Confidence)</span>
+            </div>
+            <div class="legend-item">
+                <div class="dot moderate"></div>
+                <span>Moderate Fire (Nominal)</span>
             </div>
         </div>
 
-        <div class="map-container">
-            <div class="update-indicator" id="updateIndicator">
-                <div class="pulse"></div>
-                <span>Live Updates Every 10 Minutes</span>
+        <div class="footer">
+            <div class="status-indicator">
+                <div class="status-dot"></div>
+                <span>System Online</span>
             </div>
-            <div id="map"></div>
+            <div id="lastUpdate">Waiting for update...</div>
         </div>
     </div>
 
-    <!-- Leaflet JS -->
+    <!-- Scripts -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <!-- Leaflet MarkerCluster JS -->
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
 
-    <script>
-        // Configuration
-        const API_BASE_URL = 'http://localhost:8000';
-        const UPDATE_INTERVAL = 10 * 60 * 1000; // 10 minutes in milliseconds
-
-        // Initialize map
-        const map = L.map('map').setView([20, 0], 2);
-
-        // Add dark theme tile layer
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-            subdomains: 'abcd',
-            maxZoom: 19
-        }).addTo(map);
-
-        // Store markers
-        let severeMarkersLayer = L.layerGroup().addTo(map);
-        let moderateMarkersCluster = L.markerClusterGroup({
-            iconCreateFunction: function(cluster) {
-                const count = cluster.getChildCount();
-                let size = 'small';
-                if (count > 100) size = 'large';
-                else if (count > 50) size = 'medium';
-                
-                return L.divIcon({
-                    html: '<div><span>' + count + '</span></div>',
-                    className: 'marker-cluster marker-cluster-moderate marker-cluster-' + size,
-                    iconSize: new L.Point(40, 40)
-                });
-            },
-            spiderfyOnMaxZoom: true,
-            showCoverageOnHover: false,
-            zoomToBoundsOnClick: true,
-            maxClusterRadius: 50
-        }).addTo(map);
-
-        // Fetch and display fire data
-        async function fetchFireData() {
-            try {
-                const severityFilter = document.getElementById('severityFilter').value;
-                let url = `${API_BASE_URL}/api/fires?limit=50000`;
-
-                if (severityFilter !== 'all') {
-                    url += `&severity=${severityFilter}`;
-                }
-
-                const response = await fetch(url);
-                const fires = await response.json();
-
-                // Update statistics
-                const statsResponse = await fetch(`${API_BASE_URL}/api/stats`);
-                const stats = await statsResponse.json();
-
-                document.getElementById('totalFires').textContent = stats.total_fires;
-                document.getElementById('severeFires').textContent = stats.severe_fires;
-                document.getElementById('moderateFires').textContent = stats.moderate_fires;
-
-                if (stats.last_update) {
-                    // Parse as UTC and convert to local time
-                    const lastUpdate = new Date(stats.last_update + 'Z'); // Add Z to indicate UTC
-                    document.getElementById('lastUpdate').textContent = lastUpdate.toLocaleString();
-                }
-
-                // Clear existing markers
-                severeMarkersLayer.clearLayers();
-                moderateMarkersCluster.clearLayers();
-
-                // Separate fires by severity
-                const severeFires = fires.filter(f => f.severity === 'severe');
-                const moderateFires = fires.filter(f => f.severity === 'moderate');
-
-                // Add severe fires as individual markers (no clustering)
-                severeFires.forEach(fire => {
-                    const marker = L.circleMarker([fire.latitude, fire.longitude], {
-                        radius: 12,
-                        fillColor: '#ef4444',
-                        color: 'rgba(255, 255, 255, 0.3)',
-                        weight: 2,
-                        opacity: 1,
-                        fillOpacity: 0.8,
-                        className: 'fire-marker severe'
-                    });
-
-                    // Create popup content
-                    const popupContent = `
-                        <div>
-                            <div class="popup-title">🔥 ${fire.severity.toUpperCase()} FIRE</div>
-                            <div class="popup-info">
-                                <strong>Location:</strong> ${fire.latitude.toFixed(4)}, ${fire.longitude.toFixed(4)}<br>
-                                <strong>FRP:</strong> ${fire.frp ? fire.frp.toFixed(2) + ' MW' : 'N/A'}<br>
-                                <strong>Confidence:</strong> ${fire.confidence ? fire.confidence.toUpperCase() : 'N/A'}<br>
-                                <strong>Satellite:</strong> ${fire.satellite || 'N/A'}<br>
-                                <strong>Date:</strong> ${fire.acq_date || 'N/A'}<br>
-                                <strong>Time:</strong> ${fire.acq_time || 'N/A'}<br>
-                                <strong>Detected:</strong> ${new Date(fire.detected_at).toLocaleString()}
-                            </div>
-                        </div>
-                    `;
-
-                    marker.bindPopup(popupContent);
-                    severeMarkersLayer.addLayer(marker);
-                });
-
-                // Add moderate fires to cluster layer
-                moderateFires.forEach(fire => {
-                    const marker = L.circleMarker([fire.latitude, fire.longitude], {
-                        radius: 8,
-                        fillColor: '#f97316',
-                        color: 'rgba(255, 255, 255, 0.3)',
-                        weight: 1,
-                        opacity: 1,
-                        fillOpacity: 0.7,
-                        className: 'fire-marker moderate'
-                    });
-
-                    // Create popup content
-                    const popupContent = `
-                        <div>
-                            <div class="popup-title">🔥 ${fire.severity.toUpperCase()} FIRE</div>
-                            <div class="popup-info">
-                                <strong>Location:</strong> ${fire.latitude.toFixed(4)}, ${fire.longitude.toFixed(4)}<br>
-                                <strong>FRP:</strong> ${fire.frp ? fire.frp.toFixed(2) + ' MW' : 'N/A'}<br>
-                                <strong>Confidence:</strong> ${fire.confidence ? fire.confidence.toUpperCase() : 'N/A'}<br>
-                                <strong>Satellite:</strong> ${fire.satellite || 'N/A'}<br>
-                                <strong>Date:</strong> ${fire.acq_date || 'N/A'}<br>
-                                <strong>Time:</strong> ${fire.acq_time || 'N/A'}<br>
-                                <strong>Detected:</strong> ${new Date(fire.detected_at).toLocaleString()}
-                            </div>
-                        </div>
-                    `;
-
-                    marker.bindPopup(popupContent);
-                    moderateMarkersCluster.addLayer(marker);
-                });
-
-                // Show update indicator
-                const indicator = document.getElementById('updateIndicator');
-                indicator.classList.add('updating');
-                setTimeout(() => {
-                    indicator.classList.remove('updating');
-                }, 2000);
-
-                console.log(`Loaded ${fires.length} fire detections`);
-
-            } catch (error) {
-                console.error('Error fetching fire data:', error);
-                alert('Error loading fire data. Please check if the API server is running.');
-            }
-        }
-
-        // Manual refresh function
-        function refreshData() {
-            fetchFireData();
-        }
-
-        // Severity filter change handler
-        document.getElementById('severityFilter').addEventListener('change', () => {
-            fetchFireData();
-        });
-
-        // Initial load
-        fetchFireData();
-
-        // Auto-refresh every 10 minutes
-        setInterval(fetchFireData, UPDATE_INTERVAL);
-
-        // Update countdown timer
-        let countdown = UPDATE_INTERVAL / 1000;
-        setInterval(() => {
-            countdown--;
-            if (countdown <= 0) {
-                countdown = UPDATE_INTERVAL / 1000;
-            }
-        }, 1000);
-    </script>
+    <!-- Custom JavaScript -->
+    <script src="js/app.js"></script>
 </body>
-
 </html>

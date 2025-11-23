@@ -1,0 +1,4 @@
+model_name: random_forest
+timestamp: 20251123_162413
+metrics: {'accuracy': 0.9963042696792591, 'precision': 0.9984353738665823, 'recall': 0.9977586120860293, 'f1': 0.9980968782563661, 'roc_auc': 0.9993126537484344}
+model_file: random_forest_20251123_162413.joblib
