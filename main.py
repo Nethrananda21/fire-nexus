@@ -15,10 +15,6 @@ from typing import List, Optional
 from pydantic import BaseModel
 import os
 from dotenv import load_dotenv
-import joblib
-from pathlib import Path
-import pandas as pd
-import numpy as np
 
 # Load environment variables
 load_dotenv()
@@ -31,77 +27,6 @@ ETL_INTERVAL_MINUTES = int(os.getenv('ETL_INTERVAL_MINUTES', 10))
 SEVERE_FRP_THRESHOLD = float(os.getenv('SEVERE_FRP_THRESHOLD', 100.0))
 SEVERE_FRP_WITH_CONFIDENCE = float(os.getenv('SEVERE_FRP_WITH_CONFIDENCE', 50.0))
 MODERATE_FRP_THRESHOLD = float(os.getenv('MODERATE_FRP_THRESHOLD', 20.0))
-
-# ML Model
-ML_MODEL_PATH = Path(__file__).parent / "ml_model" / "models"
-ml_model = None
-
-def load_ml_model():
-    """Load the latest trained ML model"""
-    global ml_model
-    try:
-        model_files = list(ML_MODEL_PATH.glob("random_forest_*.joblib"))
-        if model_files:
-            latest_model = max(model_files, key=lambda p: p.stat().st_mtime)
-            ml_model = joblib.load(latest_model)
-            logger.info(f"✅ Loaded ML model: {latest_model.name}")
-        else:
-            logger.warning("⚠️ No ML model found. Predictions will not be available.")
-    except Exception as e:
-        logger.error(f"❌ Error loading ML model: {e}")
-
-def predict_fire_continuation(fire_data: dict) -> dict:
-    """Predict if fire will continue in next 24 hours"""
-    if ml_model is None:
-        return {'probability': None, 'risk_level': None}
-    
-    try:
-        # Parse datetime
-        dt = datetime.strptime(
-            f"{fire_data['acq_date']} {str(fire_data['acq_time']).zfill(4)}",
-            "%Y-%m-%d %H%M"
-        )
-        
-        # Prepare features
-        features = pd.DataFrame([{
-            'day_of_week': dt.weekday(),
-            'day_of_month': dt.day,
-            'month': dt.month,
-            'hour': dt.hour,
-            'is_weekend': 1 if dt.weekday() >= 5 else 0,
-            'season': 0 if dt.month in [12,1,2] else 1 if dt.month in [3,4,5] else 2 if dt.month in [6,7,8] else 3,
-            'latitude': fire_data['latitude'],
-            'longitude': fire_data['longitude'],
-            'abs_latitude': abs(fire_data['latitude']),
-            'lat_grid': (fire_data['latitude'] // 5) * 5,
-            'lon_grid': (fire_data['longitude'] // 5) * 5,
-            'fires_last_7days': 0,  # Default to 0 for real-time predictions
-            'frp': fire_data.get('frp', 0),
-            'frp_log': np.log1p(fire_data.get('frp', 0)),
-            'brightness': fire_data.get('brightness', 300),
-            'bright_t31': fire_data.get('bright_t31', 280),
-            'confidence_encoded': {'l': 0, 'n': 1, 'h': 2}.get(fire_data.get('confidence', 'n'), 1),
-            'scan': fire_data.get('scan', 1.0),
-            'track': fire_data.get('track', 1.0),
-            'is_daytime': 1 if fire_data.get('daynight', 'D') == 'D' else 0,
-        }])
-        
-        # Make prediction
-        probability = float(ml_model.predict_proba(features)[0, 1])
-        
-        # Determine risk level
-        if probability >= 0.7:
-            risk_level = "HIGH"
-        elif probability >= 0.4:
-            risk_level = "MEDIUM"
-        else:
-            risk_level = "LOW"
-        
-        return {'probability': probability, 'risk_level': risk_level}
-    
-    except Exception as e:
-        logger.error(f"Error making prediction: {e}")
-        return {'probability': None, 'risk_level': None}
 
 # Logging
 logging.basicConfig(level=logging.INFO)
@@ -152,8 +77,6 @@ class FireDetectionResponse(BaseModel):
     acq_time: Optional[str]
     satellite: Optional[str]
     detected_at: datetime
-    prediction_probability: Optional[float] = None
-    prediction_risk_level: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -397,9 +320,6 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("Starting application...")
     
-    # Load ML model
-    load_ml_model()
-    
     # Create tables
     Base.metadata.create_all(bind=engine)
     
@@ -467,10 +387,9 @@ async def root():
 async def get_fires(
     severity: Optional[str] = None,
     limit: int = 1000,
-    include_predictions: bool = False,
     db: Session = Depends(get_db)
 ):
-    """Get active fire detections with optional ML predictions"""
+    """Get active fire detections"""
     try:
         # Only show fires seen in last 30 minutes (actively detected by NASA)
         query = db.query(FireDetection).filter(
@@ -481,87 +400,6 @@ async def get_fires(
             query = query.filter(FireDetection.severity == severity)
         
         fires = query.order_by(FireDetection.detected_at.desc()).limit(limit).all()
-        
-        # Add predictions if requested (using batch processing for speed)
-        if include_predictions and ml_model is not None:
-            # Prepare all features at once
-            features_list = []
-            for fire in fires:
-                try:
-                    dt = datetime.strptime(
-                        f"{fire.acq_date} {str(fire.acq_time).zfill(4)}",
-                        "%Y-%m-%d %H%M"
-                    )
-                    
-                    features_list.append({
-                        'day_of_week': dt.weekday(),
-                        'day_of_month': dt.day,
-                        'month': dt.month,
-                        'hour': dt.hour,
-                        'is_weekend': 1 if dt.weekday() >= 5 else 0,
-                        'season': 0 if dt.month in [12,1,2] else 1 if dt.month in [3,4,5] else 2 if dt.month in [6,7,8] else 3,
-                        'latitude': fire.latitude,
-                        'longitude': fire.longitude,
-                        'abs_latitude': abs(fire.latitude),
-                        'lat_grid': (fire.latitude // 5) * 5,
-                        'lon_grid': (fire.longitude // 5) * 5,
-                        'fires_last_7days': 0,
-                        'frp': fire.frp or 0,
-                        'frp_log': np.log1p(fire.frp or 0),
-                        'brightness': fire.brightness or 300,
-                        'bright_t31': fire.bright_t31 or 280,
-                        'confidence_encoded': {'l': 0, 'n': 1, 'h': 2}.get(fire.confidence, 1),
-                        'scan': fire.scan or 1.0,
-                        'track': fire.track or 1.0,
-                        'is_daytime': 1 if fire.daynight == 'D' else 0,
-                    })
-                except:
-                    features_list.append(None)
-            
-            # Batch predict all fires at once (much faster!)
-            valid_indices = [i for i, f in enumerate(features_list) if f is not None]
-            valid_features = [features_list[i] for i in valid_indices]
-            
-            if valid_features:
-                features_df = pd.DataFrame(valid_features)
-                probabilities = ml_model.predict_proba(features_df)[:, 1]
-                
-                # Map predictions back to fires
-                predictions_map = {}
-                for idx, prob in zip(valid_indices, probabilities):
-                    if prob >= 0.7:
-                        risk_level = "HIGH"
-                    elif prob >= 0.4:
-                        risk_level = "MEDIUM"
-                    else:
-                        risk_level = "LOW"
-                    predictions_map[idx] = {'probability': float(prob), 'risk_level': risk_level}
-            else:
-                predictions_map = {}
-            
-            # Build response with predictions
-            results = []
-            for i, fire in enumerate(fires):
-                pred = predictions_map.get(i, {'probability': None, 'risk_level': None})
-                
-                fire_response = FireDetectionResponse(
-                    id=fire.id,
-                    latitude=fire.latitude,
-                    longitude=fire.longitude,
-                    brightness=fire.brightness,
-                    frp=fire.frp,
-                    confidence=fire.confidence,
-                    severity=fire.severity,
-                    acq_date=fire.acq_date,
-                    acq_time=fire.acq_time,
-                    satellite=fire.satellite,
-                    detected_at=fire.detected_at,
-                    prediction_probability=pred['probability'],
-                    prediction_risk_level=pred['risk_level']
-                )
-                results.append(fire_response)
-            
-            return results
         
         return fires
         

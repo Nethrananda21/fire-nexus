@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-This is a **real-time wildfire detection and monitoring system** that fetches satellite data from NASA FIRMS API, processes it through an ETL pipeline, stores it in PostgreSQL with PostGIS, and visualizes active fires on an interactive web map.
+This is a **real-time wildfire detection and monitoring system** that fetches satellite data from NASA FIRMS API, processes it through an ETL pipeline, stores it in PostgreSQL with PostGIS,and visualizes active fires on an interactive web map.
 
 **Tech Stack**: FastAPI (Python), PostgreSQL + PostGIS, Leaflet.js, NASA FIRMS API
 

@@ -1,7 +1,7 @@
 🚀 Quick Start Guide
 
 ═══════════════════════════════════════════════════════════════
-PART 1: MAIN APPLICATION (Fire Detection & Monitoring)
+WILDFIRE DETECTION & MONITORING SYSTEM
 ═══════════════════════════════════════════════════════════════
 
 To Run the Project (2 Commands):
@@ -9,131 +9,19 @@ To Run the Project (2 Commands):
 1. Start Backend:
     python -m uvicorn main:app --host 0.0.0.0 --port 8000
 
-2. Open Frontend:
-    Start-Process (Resolve-Path "frontend\index.html").Path
+2. Start Frontend Server (use port 8081 - port 8080 is used by PostgreSQL):
+    cd frontend
+    python -m http.server 8081
+    
+    Then open in browser:
+    http://localhost:8081/index.html
 
 That's it! The system will:
-✅ Fetch 42,000+ fires from NASA
+✅ Fetch 42,000+ fires from NASA FIRMS
 ✅ Display them on an interactive map
 ✅ Auto-update every 10 minutes
 ✅ Cluster moderate fires (no lag!)
 ✅ Show severe fires individually (red dots)
-
-Navigate between pages:
-🗺️  Live Map (index.html) - Real-time fire monitoring
-🧠 AI Predictions (prediction.html) - ML-powered fire analysis
-
-
-═══════════════════════════════════════════════════════════════
-PART 2: ML PREDICTION MODEL (One-Time Training)
-═══════════════════════════════════════════════════════════════
-
-📍 Location: ml_model/ directory
-
-STEP 1: Fetch Historical Data (30 days from NASA FIRMS)
-    cd ml_model
-    python fetch_historical_data.py
-    
-    ⏱️ Takes: ~2 minutes
-    📁 Output: 30 CSV files in ml_model/data/
-    📊 Data: ~1.2 million fire detections
-
-STEP 2: Feature Engineering (Process raw data into ML features)
-    python feature_engineering.py
-    
-    ⏱️ Takes: ~10 minutes (1.2M records processing)
-    📁 Output: ml_model/data/processed_features.csv
-    🎯 Features: 20 engineered features + target variable
-    
-    Features created:
-    ✓ Temporal: day_of_week, month, hour, season
-    ✓ Spatial: latitude, longitude, grid cells
-    ✓ Fire History: fires in last 7 days (per region)
-    ✓ Environmental: FRP, brightness, confidence
-
-STEP 3: Train Machine Learning Model
-    python train_model.py
-    
-    ⏱️ Takes: ~45 seconds
-    📁 Output: ml_model/models/random_forest_TIMESTAMP.joblib
-    📈 Performance: 
-       • Accuracy: 99.63%
-       • Precision: 99.84%
-       • Recall: 99.78%
-       • ROC-AUC: 99.93%
-
-STEP 4: Test Predictions (Optional)
-    python predict.py
-    
-    ⏱️ Takes: <1 second
-    📊 Shows: Example predictions for 3 fire locations
-
-
-═══════════════════════════════════════════════════════════════
-PART 3: VIEW ML PREDICTIONS ON MAP
-═══════════════════════════════════════════════════════════════
-
-REQUIREMENT: Complete PART 2 (ML model must be trained)
-
-1. Ensure Backend is Running:
-    python -m uvicorn main:app --host 0.0.0.0 --port 8000
-    
-    ✅ Backend automatically loads trained ML model on startup
-    ⚠️ If no model found, predictions won't be available
-
-2. Open Prediction Page:
-    • Navigate to frontend/prediction.html in browser
-    • Or click "AI Predictions" in navigation bar
-    
-3. Load Predictions:
-    • Click "Load Predictions" button
-    • Map shows fires color-coded by risk:
-      🔴 Red = HIGH risk (>70% probability)
-      🟠 Orange = MEDIUM risk (40-70%)
-      🟢 Green = LOW risk (<40%)
-
-4. Interact with Map:
-    • Click any fire marker to see:
-      - Fire details (FRP, confidence, satellite)
-      - ML prediction (continuation probability)
-      - Risk level (HIGH/MEDIUM/LOW)
-    • Use Risk Filter dropdown to show specific risk levels
-
-
-═══════════════════════════════════════════════════════════════
-WORKFLOW SUMMARY
-═══════════════════════════════════════════════════════════════
-
-FIRST TIME SETUP (One-time, ~15 minutes):
-1. Train ML model (PART 2) → ml_model/models/random_forest_*.joblib
-
-DAILY USAGE (Fast):
-1. Start backend → python -m uvicorn main:app --reload
-2. Open frontend → frontend/index.html (live monitoring)
-3. View predictions → frontend/prediction.html (AI analysis)
-
-
-═══════════════════════════════════════════════════════════════
-UNDERSTANDING THE PREDICTION MODEL
-═══════════════════════════════════════════════════════════════
-
-What it predicts:
-✅ "Will this fire continue burning in the next 24 hours?"
-✅ Probability: 0-100% (e.g., 85% chance fire continues)
-✅ Risk Level: HIGH/MEDIUM/LOW classification
-
-What it DOES NOT predict:
-❌ Where NEW fires will start
-❌ How far fires will spread
-❌ Fire damage or casualties
-
-How it works:
-1. Satellites detect ACTUAL fires (NASA FIRMS)
-2. ETL saves fire data to database (every 10 min)
-3. User opens prediction page
-4. Backend fetches existing fires from database
-5. ML model predicts continuation probability for EACH fire
-6. Frontend displays fires with color-coded risk markers
 
 
 ═══════════════════════════════════════════════════════════════
@@ -141,24 +29,15 @@ TROUBLESHOOTING
 ═══════════════════════════════════════════════════════════════
 
 Backend takes 5-10 minutes to start?
-→ Initial ETL is fetching all fires. Wait or comment out:
-  # await scheduled_etl_job()  (in main.py lifespan function)
+→ Initial ETL is fetching all fires from NASA. Wait for it to complete.
 
-"ML model not found" error?
-→ Run PART 2 training steps first (ml_model/ directory)
+Map not loading?
+→ Check backend is running on port 8000: http://localhost:8000/health
+→ Check frontend is running on port 8081
 
-Prediction page shows "Failed to load"?
-→ Check backend is running on port 8000
-→ Verify trained model exists in ml_model/models/
-
-Feature engineering stuck?
-→ Normal! Processing 1.2M records takes ~10 minutes
-→ Check progress messages: "Processed X grid cells..."
-
-No predictions showing on map?
-→ Click "Load Predictions" button
+No fires showing?
+→ The ETL runs every 10 minutes. Wait for initial data load.
 → Check browser console for errors (F12)
-→ Verify backend logs show "✅ ML model loaded successfully"
 
 
 ═══════════════════════════════════════════════════════════════
@@ -167,19 +46,8 @@ KEY FILES & DIRECTORIES
 
 📄 main.py - FastAPI backend with NASA FIRMS ETL
 📄 frontend/index.html - Live fire monitoring map
-📄 frontend/prediction.html - ML prediction visualization
-📁 ml_model/ - Complete ML training pipeline
-   ├── fetch_historical_data.py - Download NASA data
-   ├── feature_engineering.py - Process features
-   ├── train_model.py - Train Random Forest
-   ├── predict.py - Make predictions
-   ├── data/ - Historical fire data (CSV files)
-   ├── models/ - Trained model files (.joblib)
-   └── README.md - Detailed ML documentation
-
+📁 database/ - Database setup scripts
 📄 README.md - Project overview
-📄 SETUP.md - Installation instructions
-📄 copilot-instructions.md - Development guide
 
 
 ═══════════════════════════════════════════════════════════════
@@ -187,10 +55,7 @@ API ENDPOINTS
 ═══════════════════════════════════════════════════════════════
 
 http://localhost:8000/api/fires
-  → Get current fires (no predictions)
-
-http://localhost:8000/api/fires?include_predictions=true
-  → Get fires WITH ML predictions (used by prediction page)
+  → Get current fires
 
 http://localhost:8000/api/stats
   → Get fire statistics
@@ -199,4 +64,4 @@ http://localhost:8000/health
   → Check backend health
 
 
-Your system is fully operational with AI-powered predictions! 🎉🔥🧠
+Your wildfire monitoring system is ready! 🎉🔥

@@ -11,6 +11,10 @@ ENV/
 pip-log.txt
 pip-delete-this-directory.txt
 
+#copilot instructions
+.github
+copilot-instructions.md
+
 # Environment variables
 .env
 .env.local
@@ -91,3 +95,9 @@ ml_model/models/random_forest_20251123_162413.joblib
 ml_model/models/modelview.py
 PROJECT_REPORT.md
 database/LAST_SEEN_IMPLEMENTATION.md
+Interview_challenges/INTERVIEW_QUESTIONS_AND_ANSWERS.md
+ml_model/SEVERITY_FILTER_QUICKSTART.md
+ml_model/QUICKSTART.md
+ml_model/ADVANCED_PREDICTION_GUIDE.md
+.gitignore
+.github/copilot-instructions.md
