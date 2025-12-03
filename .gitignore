@@ -101,3 +101,15 @@ ml_model/QUICKSTART.md
 ml_model/ADVANCED_PREDICTION_GUIDE.md
 .gitignore
 .github/copilot-instructions.md
+ml_model/data/fires_2025-11-24.csv
+ml_model/data/fires_2025-11-25.csv
+ml_model/data/fires_2025-11-26.csv
+ml_model/data/fires_2025-11-27.csv
+ml_model/data/fires_2025-11-28.csv
+ml_model/data/fires_2025-11-29.csv
+ml_model/data/fires_2025-11-30.csv
+ml_model/data/fires_2025-12-01.csv
+ml_model/data/fires_2025-12-02.csv
+ml_model/data/fires_2025-12-03.csv
+ml_model/models/xgboost_wildfire_20251203_230649_metadata.txt
+ml_model/models/xgboost_wildfire_20251203_230649.joblib

@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FireNexus | AI Predictions</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔥</text></svg>">
+    
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
+    <!-- Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
+
+    <!-- Custom Styles -->
+    <link rel="stylesheet" href="css/prediction.css">
+</head>
+<body>
+
+    <!-- Header -->
+    <header class="header">
+        <div class="logo">
+            <i class="ri-fire-fill"></i>
+            <h1>FireNexus</h1>
+        </div>
+        <nav class="nav-links">
+            <a href="index.html"><i class="ri-map-2-line"></i> Live Map</a>
+            <a href="prediction.html" class="active"><i class="ri-brain-line"></i> Predictions</a>
+        </nav>
+    </header>
+
+    <!-- Main Layout -->
+    <main class="main-content">
+        
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            
+            <!-- Stats Section -->
+            <section>
+                <h2>Risk Summary</h2>
+                <div class="stats-grid">
+                    <div class="stat-card high">
+                        <div class="stat-icon"><i class="ri-alarm-warning-fill"></i></div>
+                        <div class="stat-info">
+                            <h3 id="high-count">0</h3>
+                            <p>High Risk (&gt;70%)</p>
+                        </div>
+                    </div>
+                    <div class="stat-card elevated">
+                        <div class="stat-icon"><i class="ri-alert-fill"></i></div>
+                        <div class="stat-info">
+                            <h3 id="elevated-count">0</h3>
+                            <p>Elevated (50-70%)</p>
+                        </div>
+                    </div>
+                    <div class="stat-card medium">
+                        <div class="stat-icon"><i class="ri-information-fill"></i></div>
+                        <div class="stat-info">
+                            <h3 id="medium-count">0</h3>
+                            <p>Medium (40-50%)</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Legend -->
+            <section class="legend">
+                <h2>Map Legend</h2>
+                <div class="legend-items">
+                    <div class="legend-item">
+                        <div class="legend-color high"></div>
+                        <span>High Risk Zone</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color elevated"></div>
+                        <span>Elevated Risk</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color medium"></div>
+                        <span>Medium Risk</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Refresh -->
+            <section class="refresh-section">
+                <button class="refresh-btn" id="refresh-btn" onclick="loadPredictions()">
+                    <i class="ri-refresh-line"></i>
+                    Refresh Predictions
+                </button>
+                <p class="last-update" id="last-update">Click to load predictions</p>
+            </section>
+
+        </aside>
+
+        <!-- Map -->
+        <div class="map-container">
+            <div id="prediction-map"></div>
+            <div class="loading-overlay" id="loading">
+                <div class="loading-spinner"></div>
+                <p class="loading-text">Loading predictions...</p>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Scripts -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="js/prediction.js"></script>
+</body>
+</html>

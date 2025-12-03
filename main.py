@@ -11,10 +11,14 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from contextlib import asynccontextmanager
 import logging
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from pydantic import BaseModel
 import os
 from dotenv import load_dotenv
+from pathlib import Path
+from collections import defaultdict
+import numpy as np
+import joblib
 
 # Load environment variables
 load_dotenv()
@@ -86,6 +90,184 @@ class FireStats(BaseModel):
     severe_fires: int
     moderate_fires: int
     last_update: Optional[datetime]
+
+class PredictionZone(BaseModel):
+    lat: float
+    lon: float
+    probability: float
+    risk_level: str
+    fires_nearby: int
+    avg_frp: float
+    heuristic_score: Optional[float] = None
+    ml_score: Optional[float] = None
+    prediction_method: Optional[str] = None
+
+class PredictionResponse(BaseModel):
+    timestamp: datetime
+    model_name: str
+    high_risk_zones: List[PredictionZone]
+    total_predictions: int
+    model_accuracy: Optional[float]
+    prediction_method: str  # 'hybrid', 'ml_only', 'heuristic_only'
+
+# ML Model Management
+class WildfirePredictor:
+    def __init__(self):
+        self.model = None
+        self.model_path = None
+        self.metadata = {}
+        self._load_latest_model()
+    
+    def _load_latest_model(self):
+        """Load the latest trained model"""
+        models_dir = Path(__file__).parent / "ml_model" / "models"
+        if not models_dir.exists():
+            logger.warning("ML models directory not found")
+            return
+        
+        # Find latest model file (support multiple naming patterns)
+        model_files = list(models_dir.glob("*.joblib"))
+        # Filter out non-model files
+        model_files = [f for f in model_files if 'wildfire' in f.name.lower() or 'predictor' in f.name.lower()]
+        
+        if not model_files:
+            logger.warning("No trained ML model found")
+            return
+        
+        # Sort by modification time and get latest
+        latest_model = max(model_files, key=lambda p: p.stat().st_mtime)
+        
+        try:
+            self.model = joblib.load(latest_model)
+            self.model_path = latest_model
+            
+            # Load metadata if exists (try multiple naming patterns)
+            metadata_path = latest_model.with_name(latest_model.stem + '_metadata.txt')
+            if not metadata_path.exists():
+                # Try alternative naming
+                metadata_path = latest_model.with_suffix('.txt').with_name(
+                    latest_model.stem.replace('wildfire_predictor', 'random_forest') + '_metadata.txt'
+                )
+            
+            if metadata_path.exists():
+                with open(metadata_path) as f:
+                    for line in f:
+                        if ':' in line:
+                            key, value = line.strip().split(':', 1)
+                            self.metadata[key.strip()] = value.strip()
+            
+            logger.info(f"Loaded ML model: {latest_model.name}")
+        except Exception as e:
+            logger.error(f"Error loading ML model: {e}")
+    
+    def reload_model(self):
+        """Reload the model (call after retraining)"""
+        self._load_latest_model()
+    
+    def predict(self, fires_data: List[dict], grid_size: float = 0.5) -> List[dict]:
+        """Generate predictions for grid cells based on recent fire data"""
+        if self.model is None:
+            return []
+        
+        if not fires_data:
+            return []
+        
+        # Build grid from fire locations
+        predictions = []
+        grid_fires = defaultdict(list)
+        
+        # Group fires by grid cell
+        for fire in fires_data:
+            lat = fire.get('latitude', 0)
+            lon = fire.get('longitude', 0)
+            grid_lat = round(lat / grid_size) * grid_size
+            grid_lon = round(lon / grid_size) * grid_size
+            grid_fires[(grid_lat, grid_lon)].append(fire)
+        
+        # Generate predictions for cells with fires and their neighbors
+        cells_to_predict = set()
+        for (lat, lon) in grid_fires.keys():
+            # Add the cell itself
+            cells_to_predict.add((lat, lon))
+            # Add neighboring cells
+            for dlat in [-grid_size, 0, grid_size]:
+                for dlon in [-grid_size, 0, grid_size]:
+                    cells_to_predict.add((lat + dlat, lon + dlon))
+        
+        # Create features for each cell
+        for (lat, lon) in cells_to_predict:
+            fires_in_cell = grid_fires.get((lat, lon), [])
+            
+            # Count fires in neighboring cells
+            neighbor_fires = 0
+            for dlat in [-grid_size, 0, grid_size]:
+                for dlon in [-grid_size, 0, grid_size]:
+                    if dlat != 0 or dlon != 0:
+                        neighbor_fires += len(grid_fires.get((lat + dlat, lon + dlon), []))
+            
+            # Calculate features
+            fires_count = len(fires_in_cell)
+            avg_frp = np.mean([f.get('frp', 0) or 0 for f in fires_in_cell]) if fires_in_cell else 0
+            max_frp = max([f.get('frp', 0) or 0 for f in fires_in_cell]) if fires_in_cell else 0
+            
+            # Season (1-4)
+            month = datetime.utcnow().month
+            season = (month % 12) // 3 + 1
+            
+            # Build feature vector (must match training features)
+            features = np.array([[
+                lat,                    # latitude
+                lon,                    # longitude
+                fires_count,            # fires_last_7days (approximation)
+                fires_count,            # fires_last_14days
+                fires_count,            # fires_last_30days
+                neighbor_fires,         # neighbor_fires
+                avg_frp,                # avg_frp
+                max_frp,                # max_frp
+                season                  # season
+            ]])
+            
+            try:
+                # Get probability prediction
+                proba = self.model.predict_proba(features)[0][1]  # Probability of fire
+                
+                # Determine risk level
+                if proba >= 0.7:
+                    risk_level = "critical"
+                elif proba >= 0.5:
+                    risk_level = "high"
+                elif proba >= 0.3:
+                    risk_level = "moderate"
+                else:
+                    risk_level = "low"
+                
+                # Only include moderate+ risk zones
+                if proba >= 0.25:
+                    predictions.append({
+                        'lat': lat,
+                        'lon': lon,
+                        'probability': round(proba * 100, 1),
+                        'risk_level': risk_level,
+                        'fires_nearby': fires_count + neighbor_fires,
+                        'avg_frp': round(avg_frp, 1)
+                    })
+            except Exception as e:
+                logger.error(f"Prediction error for cell ({lat}, {lon}): {e}")
+                continue
+        
+        # Sort by probability (highest first)
+        predictions.sort(key=lambda x: x['probability'], reverse=True)
+        
+        return predictions[:100]  # Return top 100 high-risk zones
+
+# Global predictor instance
+wildfire_predictor = None
+
+def get_predictor() -> WildfirePredictor:
+    global wildfire_predictor
+    if wildfire_predictor is None:
+        wildfire_predictor = WildfirePredictor()
+    return wildfire_predictor
 
 # ETL Service
 class FireDataETL:
@@ -204,15 +386,20 @@ class FireDataETL:
                 key = (fire.latitude, fire.longitude, fire.acq_date, fire.acq_time)
                 existing_fires_dict[key] = fire
             
-            # Track fires seen in current fetch
-            current_fetch_keys = set()
+            # Track fires seen in current fetch and dedupe incoming data
+            seen_in_batch = set()
             new_fires = []
             updated_count = 0
-            inserted_count = 0
+            skipped_dupes = 0
             
             for record in cleaned_data:
                 key = (record['latitude'], record['longitude'], record['acq_date'], record['acq_time'])
-                current_fetch_keys.add(key)
+                
+                # Skip duplicates within the same batch
+                if key in seen_in_batch:
+                    skipped_dupes += 1
+                    continue
+                seen_in_batch.add(key)
                 
                 if key in existing_fires_dict:
                     # Update last_seen for existing fire
@@ -226,14 +413,23 @@ class FireDataETL:
                         last_seen=datetime.utcnow()
                     )
                     new_fires.append(fire)
+                    # Add to existing dict to prevent duplicates within new_fires
+                    existing_fires_dict[key] = fire
                     
-            # Batch insert all new fires
-            if new_fires:
-                self.db.bulk_save_objects(new_fires)
-                inserted_count = len(new_fires)
+            # Insert new fires one at a time to handle any remaining conflicts
+            inserted_count = 0
+            for fire in new_fires:
+                try:
+                    self.db.add(fire)
+                    self.db.flush()
+                    inserted_count += 1
+                except Exception:
+                    self.db.rollback()
+                    # Skip this fire if it still causes conflict
+                    continue
             
             self.db.commit()
-            logger.info(f"Database updated: {inserted_count} new fires, {updated_count} fires updated with last_seen")
+            logger.info(f"Database updated: {inserted_count} new fires, {updated_count} updated, {skipped_dupes} batch dupes skipped")
             
         except Exception as e:
             self.db.rollback()
@@ -379,6 +575,7 @@ async def root():
         "endpoints": {
             "fires": "/api/fires",
             "stats": "/api/stats",
+            "predictions": "/api/predictions",
             "manual_update": "/api/update"
         }
     }
@@ -449,6 +646,341 @@ async def manual_update(db: Session = Depends(get_db)):
         return {"message": "ETL pipeline executed successfully"}
     except Exception as e:
         logger.error(f"Error in manual update: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/predictions", response_model=PredictionResponse)
+async def get_predictions(db: Session = Depends(get_db)):
+    """Get AI-powered wildfire risk predictions using hybrid model"""
+    try:
+        predictor = get_predictor()
+        
+        # Get recent fires from database (last 24 hours for prediction)
+        recent_fires = db.query(FireDetection).filter(
+            FireDetection.detected_at > datetime.utcnow() - timedelta(hours=24)
+        ).all()
+        
+        # Convert to dict for predictor
+        fires_data = [
+            {
+                'latitude': f.latitude,
+                'longitude': f.longitude,
+                'frp': f.frp,
+                'confidence': f.confidence,
+                'severity': f.severity
+            }
+            for f in recent_fires
+        ]
+        
+        # Use hybrid prediction system
+        predictions, prediction_method = hybrid_predict(fires_data, predictor)
+        
+        # Determine model name
+        if predictor.model is not None:
+            model_name = f"hybrid-{predictor.model_path.name}" if predictor.model_path else "hybrid-xgboost"
+        else:
+            model_name = "heuristic-v1"
+        
+        # Get model accuracy from metadata (if ML model is used)
+        accuracy = None
+        if predictor.model is not None and 'Accuracy' in predictor.metadata:
+            try:
+                accuracy = float(predictor.metadata['Accuracy'].replace('%', ''))
+            except:
+                pass
+        
+        high_risk_zones = [PredictionZone(**p) for p in predictions]
+        
+        return PredictionResponse(
+            timestamp=datetime.utcnow(),
+            model_name=model_name,
+            high_risk_zones=high_risk_zones,
+            total_predictions=len(high_risk_zones),
+            model_accuracy=accuracy,
+            prediction_method=prediction_method
+        )
+        
+    except Exception as e:
+        logger.error(f"Error generating predictions: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ============================================================================
+# HYBRID PREDICTION SYSTEM
+# Combines heuristic rules with ML model for robust predictions
+# ============================================================================
+
+# Configurable weights for hybrid model
+HEURISTIC_WEIGHT = float(os.getenv('HEURISTIC_WEIGHT', '0.4'))  # 40% heuristic
+ML_WEIGHT = float(os.getenv('ML_WEIGHT', '0.6'))  # 60% ML model
+
+def calculate_heuristic_score(fires_count: int, neighbor_fires: int, avg_frp: float, 
+                               severe_count: int, high_conf_count: int) -> float:
+    """
+    Calculate heuristic risk score (0-100) based on fire characteristics.
+    
+    Components:
+    - Base risk: Fire density in cell (max 40%)
+    - Neighbor risk: Fire activity in adjacent cells (max 20%)
+    - FRP risk: Fire intensity (max 20%)
+    - Severity risk: Proportion of severe fires (max 15%)
+    - Confidence risk: Proportion of high-confidence detections (max 5%)
+    """
+    # Base risk from fire count (0-40)
+    base_risk = min(fires_count * 10, 40)
+    
+    # Neighbor risk (0-20)
+    neighbor_risk = min(neighbor_fires * 5, 20)
+    
+    # FRP risk (0-20)
+    frp_risk = min(avg_frp / 10, 20) if avg_frp > 0 else 0
+    
+    # Severity risk (0-15)
+    severity_risk = (severe_count / fires_count * 15) if fires_count > 0 else 0
+    
+    # Confidence risk (0-5)
+    confidence_risk = (high_conf_count / fires_count * 5) if fires_count > 0 else 0
+    
+    # Total (capped at 95)
+    return min(base_risk + neighbor_risk + frp_risk + severity_risk + confidence_risk, 95)
+
+def calculate_ml_score(predictor, lat: float, lon: float, fires_count: int, 
+                       neighbor_fires: int, avg_frp: float, max_frp: float) -> Optional[float]:
+    """
+    Calculate ML-based risk score (0-100) using trained XGBoost model.
+    Returns None if no model is available.
+    
+    Model features (11 total):
+    grid_lat, grid_lon, fires_last_7_days, fires_last_14_days, avg_frp_7_days,
+    neighbor_fires_3_days, month, day_of_year, day_of_week, season, abs_latitude
+    """
+    if predictor.model is None:
+        return None
+    
+    # Temporal features
+    now = datetime.utcnow()
+    month = now.month
+    day_of_year = now.timetuple().tm_yday
+    day_of_week = now.weekday()
+    
+    # Season (0=winter, 1=spring, 2=summer, 3=fall) - adjusted for hemisphere
+    if month in [12, 1, 2]:
+        season = 0
+    elif month in [3, 4, 5]:
+        season = 1
+    elif month in [6, 7, 8]:
+        season = 2
+    else:
+        season = 3
+    
+    # Hemisphere adjustment
+    if lat < 0:
+        season = (season + 2) % 4
+    
+    # Build feature vector (must match training features exactly!)
+    # Features: grid_lat, grid_lon, fires_last_7_days, fires_last_14_days, avg_frp_7_days,
+    #           neighbor_fires_3_days, month, day_of_year, day_of_week, season, abs_latitude
+    features = np.array([[
+        lat,                    # grid_lat
+        lon,                    # grid_lon
+        fires_count,            # fires_last_7_days
+        fires_count,            # fires_last_14_days (approximation)
+        avg_frp,                # avg_frp_7_days
+        neighbor_fires,         # neighbor_fires_3_days
+        month,                  # month
+        day_of_year,            # day_of_year
+        day_of_week,            # day_of_week
+        season,                 # season
+        abs(lat)                # abs_latitude
+    ]])
+    
+    try:
+        # Get probability prediction from model
+        proba = predictor.model.predict_proba(features)[0][1]
+        return round(proba * 100, 1)
+    except Exception as e:
+        logger.error(f"ML prediction error: {e}")
+        return None
+
+def determine_risk_level(probability: float) -> str:
+    """Determine risk level from probability score"""
+    if probability >= 70:
+        return "critical"
+    elif probability >= 50:
+        return "high"
+    elif probability >= 30:
+        return "moderate"
+    else:
+        return "low"
+
+def hybrid_predict(fires_data: List[dict], predictor, grid_size: float = 0.5) -> tuple:
+    """
+    Generate hybrid predictions combining heuristic rules and ML model.
+    
+    Returns:
+        tuple: (predictions_list, prediction_method)
+        - prediction_method: 'hybrid', 'ml_only', or 'heuristic_only'
+    """
+    if not fires_data:
+        return [], 'heuristic_only'
+    
+    predictions = []
+    grid_fires = defaultdict(list)
+    has_ml = predictor.model is not None
+    
+    # Group fires by grid cell
+    for fire in fires_data:
+        lat = fire.get('latitude', 0)
+        lon = fire.get('longitude', 0)
+        grid_lat = round(lat / grid_size) * grid_size
+        grid_lon = round(lon / grid_size) * grid_size
+        grid_fires[(grid_lat, grid_lon)].append(fire)
+    
+    # Generate predictions for cells with fires and their neighbors
+    cells_to_predict = set()
+    for (lat, lon) in grid_fires.keys():
+        cells_to_predict.add((lat, lon))
+        # Add neighboring cells for spread prediction
+        for dlat in [-grid_size, 0, grid_size]:
+            for dlon in [-grid_size, 0, grid_size]:
+                cells_to_predict.add((lat + dlat, lon + dlon))
+    
+    # Process each cell
+    for (lat, lon) in cells_to_predict:
+        cell_fires = grid_fires.get((lat, lon), [])
+        
+        # Count fires in neighboring cells
+        neighbor_fires = 0
+        for dlat in [-grid_size, 0, grid_size]:
+            for dlon in [-grid_size, 0, grid_size]:
+                if dlat != 0 or dlon != 0:
+                    neighbor_fires += len(grid_fires.get((lat + dlat, lon + dlon), []))
+        
+        # Calculate features
+        fires_count = len(cell_fires)
+        avg_frp = np.mean([f.get('frp', 0) or 0 for f in cell_fires]) if cell_fires else 0
+        max_frp = max([f.get('frp', 0) or 0 for f in cell_fires]) if cell_fires else 0
+        severe_count = sum(1 for f in cell_fires if f.get('severity') == 'severe')
+        high_conf_count = sum(1 for f in cell_fires if f.get('confidence') == 'h')
+        
+        # Calculate heuristic score
+        heuristic_score = calculate_heuristic_score(
+            fires_count, neighbor_fires, avg_frp, severe_count, high_conf_count
+        )
+        
+        # Calculate ML score (if model available)
+        ml_score = calculate_ml_score(
+            predictor, lat, lon, fires_count, neighbor_fires, avg_frp, max_frp
+        ) if has_ml else None
+        
+        # Combine scores using weighted average
+        if ml_score is not None:
+            # Hybrid: weighted combination
+            combined_probability = (HEURISTIC_WEIGHT * heuristic_score) + (ML_WEIGHT * ml_score)
+            method = 'hybrid'
+        else:
+            # Heuristic only
+            combined_probability = heuristic_score
+            method = 'heuristic'
+        
+        # Cap at 95%
+        combined_probability = min(combined_probability, 95)
+        
+        # Determine risk level
+        risk_level = determine_risk_level(combined_probability)
+        
+        # Only include moderate+ risk zones (>= 25%)
+        if combined_probability >= 25:
+            predictions.append({
+                'lat': lat,
+                'lon': lon,
+                'probability': round(combined_probability, 1),
+                'risk_level': risk_level,
+                'fires_nearby': fires_count + neighbor_fires,
+                'avg_frp': round(avg_frp, 1),
+                'heuristic_score': round(heuristic_score, 1),
+                'ml_score': ml_score,
+                'prediction_method': method
+            })
+    
+    # Sort by probability (highest first)
+    predictions.sort(key=lambda x: x['probability'], reverse=True)
+    
+    # Determine overall prediction method
+    if has_ml:
+        overall_method = 'hybrid'
+    else:
+        overall_method = 'heuristic_only'
+    
+    return predictions[:100], overall_method
+
+def heuristic_predict(fires_data: List[dict], grid_size: float = 0.5) -> List[dict]:
+    """
+    Legacy heuristic-only predictions (kept for backwards compatibility).
+    Use hybrid_predict for new implementations.
+    """
+    if not fires_data:
+        return []
+    
+    predictions = []
+    grid_fires = defaultdict(list)
+    
+    # Group fires by grid cell
+    for fire in fires_data:
+        lat = fire.get('latitude', 0)
+        lon = fire.get('longitude', 0)
+        grid_lat = round(lat / grid_size) * grid_size
+        grid_lon = round(lon / grid_size) * grid_size
+        grid_fires[(grid_lat, grid_lon)].append(fire)
+    
+    # Calculate risk for each cell based on heuristics
+    for (lat, lon), cell_fires in grid_fires.items():
+        neighbor_fires = 0
+        for dlat in [-grid_size, 0, grid_size]:
+            for dlon in [-grid_size, 0, grid_size]:
+                if dlat != 0 or dlon != 0:
+                    neighbor_fires += len(grid_fires.get((lat + dlat, lon + dlon), []))
+        
+        fires_count = len(cell_fires)
+        avg_frp = np.mean([f.get('frp', 0) or 0 for f in cell_fires]) if cell_fires else 0
+        severe_count = sum(1 for f in cell_fires if f.get('severity') == 'severe')
+        high_conf_count = sum(1 for f in cell_fires if f.get('confidence') == 'h')
+        
+        probability = calculate_heuristic_score(
+            fires_count, neighbor_fires, avg_frp, severe_count, high_conf_count
+        )
+        risk_level = determine_risk_level(probability)
+        
+        if probability >= 25:
+            predictions.append({
+                'lat': lat,
+                'lon': lon,
+                'probability': round(probability, 1),
+                'risk_level': risk_level,
+                'fires_nearby': fires_count + neighbor_fires,
+                'avg_frp': round(avg_frp, 1),
+                'heuristic_score': round(probability, 1),
+                'ml_score': None,
+                'prediction_method': 'heuristic'
+            })
+    
+    predictions.sort(key=lambda x: x['probability'], reverse=True)
+    return predictions[:100]
+
+@app.post("/api/predictions/reload")
+async def reload_prediction_model():
+    """Reload the ML model after retraining"""
+    try:
+        predictor = get_predictor()
+        predictor.reload_model()
+        
+        if predictor.model is None:
+            return {"status": "error", "message": "No model found to load"}
+        
+        return {
+            "status": "success", 
+            "message": f"Model reloaded: {predictor.model_path.name if predictor.model_path else 'unknown'}"
+        }
+    except Exception as e:
+        logger.error(f"Error reloading model: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/health")
